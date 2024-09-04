@@ -3,39 +3,54 @@ pragma solidity ^0.8.0;
 
 import "./SimpleLiquidityPool.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";  
 
-contract FlashLoan{
+contract FlashLoan is ReentrancyGuard {
     SimpleLiquidityPool public liquiditypool;
 
-    // error InvalidToken(string tokenName);
-    // error NotEnoughToken(string tokenName);
-
-    constructor(address _liquiditypool){
-        liquiditypool =SimpleLiquidityPool(_liquiditypool);
+    constructor(address _liquiditypool) {
+        liquiditypool = SimpleLiquidityPool(_liquiditypool);
     }
 
-    function excuteFlashLoan(address borrower,address token,uint256 amount,bytes calldata data)
-    external{
-        IERC20 LoanToken =IERC20(token);
+    function executeFlashLoan(
+        address borrower,
+        address token,
+        uint256 amount,
+        bytes calldata data
+    ) external nonReentrant {  
+        IERC20 LoanToken = IERC20(token);
+        uint256 fee = (amount * 5) / 1000;
 
-        require(token == address(liquiditypool.tokenA()) || token == address(liquiditypool.tokenB()),"Not Support Token!");
+        require(
+            token == address(liquiditypool.tokenA()) || token == address(liquiditypool.tokenB()),
+            "Not Support Token!"
+        );
 
         uint256 iniBalance = LoanToken.balanceOf(address(this));
 
-        require(LoanToken.balanceOf(address(liquiditypool)) >= amount,"Not Enough Token To Lean!");
+        require(
+            LoanToken.balanceOf(address(liquiditypool)) >= amount,
+            "Not Enough Token To Loan!"
+        );
+        require(
+            LoanToken.balanceOf(borrower) >= fee,
+            "Not Enough Token To Pay Fee"
+        );
 
-        require(LoanToken.transfer(borrower,amount),"fail to transfer!");
+        require(LoanToken.transfer(borrower, amount), "Fail to transfer!");
 
-        (bool success,) =borrower.call(data);
-        require(success,"fail to external call");
+        (bool success, ) = borrower.call(data);
+        require(success, "Fail to external call");
 
-        uint256 fee = (amount *5) /1000;
-        uint256 repayamount = fee +amount;
+        uint256 repayAmount = fee + amount;
 
-        require(LoanToken.balanceOf(address(this)) >= iniBalance +fee,"fee has not paid!");
-        require(LoanToken.transfer(address(liquiditypool),repayamount),"fail to repay!");
-
+        require(
+            LoanToken.balanceOf(address(this)) >= iniBalance + fee,
+            "Fee has not been paid!"
+        );
+        require(
+            LoanToken.transfer(address(liquiditypool), repayAmount),
+            "Fail to repay!"
+        );
     }
 }
-
-
